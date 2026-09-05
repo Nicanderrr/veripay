@@ -14,7 +14,11 @@
             <select id="security-camera-select" class="field hidden max-w-xs" aria-label="Switch camera"></select>
         </div>
         <div class="security-scanner-frame mt-5">
-            <div id="security-reader"></div>
+            <div id="security-reader">
+                <video id="security-video" muted playsinline webkit-playsinline></video>
+                <canvas id="security-canvas" class="hidden"></canvas>
+                <div class="security-scan-guide" aria-hidden="true"></div>
+            </div>
         </div>
         <div id="security-scan-status" class="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600"></div>
     </section>
@@ -32,31 +36,22 @@
 @endsection
 
 @section('scripts')
-<script src="{{ asset('vendor/html5-qrcode.min.js') }}"></script>
+<script src="{{ asset('vendor/jsQR.js') }}"></script>
 <script>
     const statusEl = document.getElementById('security-scan-status');
     const startBtn = document.getElementById('start-security-scan');
     const readerEl = document.getElementById('security-reader');
+    const videoEl = document.getElementById('security-video');
+    const canvasEl = document.getElementById('security-canvas');
+    const canvasContext = canvasEl.getContext('2d', { willReadFrequently: true });
     const cameraSelect = document.getElementById('security-camera-select');
-    let scanner = null;
-    let scannerLibraryPromise = null;
+    let activeStream = null;
+    let scanFrame = null;
+    let nativeDetector = null;
     let lastScan = 0;
     let isStartingCamera = false;
-    const isSafariBrowser = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
-        || /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-    const inlineVideoObserver = new MutationObserver(() => {
-        readerEl.querySelectorAll('video').forEach(video => {
-            video.setAttribute('playsinline', 'true');
-            video.setAttribute('webkit-playsinline', 'true');
-            video.setAttribute('muted', 'true');
-            video.setAttribute('autoplay', 'true');
-            video.playsInline = true;
-            video.muted = true;
-        });
-    });
-
-    inlineVideoObserver.observe(readerEl, { childList: true, subtree: true });
+    let isScanningFrame = false;
+    const isSafariBrowser = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     function setStatus(message, tone = 'neutral') {
         statusEl.textContent = message;
@@ -72,30 +67,6 @@
         statusEl.classList.add('bg-slate-50', 'text-slate-600');
     }
 
-    function loadScannerLibrary() {
-        if (window.Html5Qrcode) return Promise.resolve();
-        if (scannerLibraryPromise) return scannerLibraryPromise;
-
-        scannerLibraryPromise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
-            script.async = true;
-            script.onload = () => window.Html5Qrcode ? resolve() : reject(new Error('Scanner library loaded without Html5Qrcode.'));
-            script.onerror = () => reject(new Error('Scanner library could not load.'));
-            document.head.appendChild(script);
-        });
-
-        return scannerLibraryPromise;
-    }
-
-    async function ensureScanner() {
-        await loadScannerLibrary();
-        if (!scanner) {
-            scanner = new Html5Qrcode('security-reader');
-        }
-        return scanner;
-    }
-
     function fillCameraSelect(devices) {
         if (!cameraSelect) return;
 
@@ -108,6 +79,30 @@
         });
 
         cameraSelect.classList.toggle('hidden', devices.length <= 1);
+    }
+
+    async function availableCameras() {
+        if (!navigator.mediaDevices?.enumerateDevices) return [];
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        return devices.filter(device => device.kind === 'videoinput');
+    }
+
+    function preferredCamera(cameras) {
+        if (!cameras.length) return null;
+
+        return cameras.find(device => /back|rear|environment/i.test(device.label || ''))
+            || cameras[cameras.length - 1]
+            || cameras[0];
+    }
+
+    async function refreshCameraSelect() {
+        try {
+            const cameras = await availableCameras();
+            fillCameraSelect(cameras);
+        } catch (error) {
+            fillCameraSelect([]);
+        }
     }
 
     function receiptUrl(decodedText) {
@@ -126,84 +121,114 @@
 
         const url = receiptUrl(decodedText);
         if (!url) {
-            statusEl.textContent = 'This QR code is not a Veripay receipt.';
+            setStatus('This QR code is not a Veripay receipt.', 'error');
             return;
         }
 
-        statusEl.textContent = 'Receipt found. Opening verification...';
+        setStatus('Receipt found. Opening verification...', 'success');
+        stopScanner();
         window.location.href = url;
     }
 
-    function scanConfig() {
-        const boxSize = Math.max(210, Math.min(readerEl.clientWidth || 300, 320));
+    async function setupNativeDetector() {
+        if (!('BarcodeDetector' in window) || nativeDetector) return;
 
-        const config = {
-            fps: 12,
-            qrbox: { width: boxSize, height: boxSize },
+        try {
+            const supported = await BarcodeDetector.getSupportedFormats();
+            if (supported.includes('qr_code')) {
+                nativeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+            }
+        } catch (error) {
+            nativeDetector = null;
+        }
+    }
+
+    function drawVideoFrame() {
+        const width = videoEl.videoWidth;
+        const height = videoEl.videoHeight;
+        if (!width || !height) return null;
+
+        canvasEl.width = width;
+        canvasEl.height = height;
+        canvasContext.drawImage(videoEl, 0, 0, width, height);
+
+        return canvasContext.getImageData(0, 0, width, height);
+    }
+
+    async function decodeFrame() {
+        if (isScanningFrame || videoEl.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) return;
+        isScanningFrame = true;
+
+        try {
+            if (nativeDetector) {
+                const detected = await nativeDetector.detect(videoEl);
+                const qr = detected.find(item => item.rawValue);
+                if (qr?.rawValue) {
+                    onScanSuccess(qr.rawValue);
+                    return;
+                }
+            }
+
+            if (window.jsQR) {
+                const imageData = drawVideoFrame();
+                if (!imageData) return;
+
+                const qr = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert',
+                });
+
+                if (qr?.data) {
+                    onScanSuccess(qr.data);
+                }
+            }
+        } finally {
+            isScanningFrame = false;
+        }
+    }
+
+    function scanLoop() {
+        decodeFrame().catch(() => {});
+        scanFrame = window.setTimeout(scanLoop, 180);
+    }
+
+    function stopScanner() {
+        if (scanFrame) {
+            clearTimeout(scanFrame);
+            scanFrame = null;
+        }
+
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            activeStream = null;
+        }
+
+        videoEl.pause();
+        videoEl.removeAttribute('src');
+        videoEl.srcObject = null;
+        videoEl.load();
+        startBtn.classList.remove('hidden');
+    }
+
+    function cameraConstraints(cameraId = null) {
+        const base = {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
         };
 
-        if (window.Html5QrcodeSupportedFormats?.QR_CODE) {
-            config.formatsToSupport = [Html5QrcodeSupportedFormats.QR_CODE];
+        if (cameraId) {
+            return { audio: false, video: { ...base, deviceId: { exact: cameraId } } };
         }
 
-        return config;
+        return { audio: false, video: { ...base, facingMode: { ideal: 'environment' } } };
     }
 
-    function refreshCameraSelect() {
-        loadScannerLibrary().then(() => Html5Qrcode.getCameras()).then(devices => {
-            fillCameraSelect(devices || []);
-        }).catch(() => {});
-    }
-
-    async function warmUpSafariCamera() {
-        if (!navigator.mediaDevices?.getUserMedia) return;
-
-        let stream = null;
+    async function openCamera(cameraId = null) {
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: { facingMode: 'environment' },
-            });
+            return await navigator.mediaDevices.getUserMedia(cameraConstraints(cameraId));
         } catch (error) {
-            stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: true,
-            });
-        } finally {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+            if (cameraId) throw error;
+            return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
         }
-    }
-
-    async function stopScannerIfRunning() {
-        try {
-            if (scanner?.isScanning) {
-                await scanner.stop();
-            }
-        } catch (error) {
-            // The scanner may already be stopped. Continue with the next start attempt.
-        }
-    }
-
-    async function startWithAvailableCamera() {
-        const devices = await Html5Qrcode.getCameras();
-        fillCameraSelect(devices || []);
-
-        if (!devices || !devices.length) {
-            throw new Error('No camera found on this device.');
-        }
-
-        const rearCamera = devices.find(device => /back|rear|environment/i.test(device.label || ''));
-        const selected = rearCamera || devices[devices.length - 1] || devices[0];
-        if (cameraSelect && selected?.id) cameraSelect.value = selected.id;
-
-        await scanner.start(
-            selected.id,
-            scanConfig(),
-            onScanSuccess,
-            () => { statusEl.textContent = 'Scanning...'; }
-        );
     }
 
     async function startScanner(cameraId = null) {
@@ -221,47 +246,33 @@
                 throw new Error('This browser does not support camera scanning.');
             }
 
-            await ensureScanner();
-            await stopScannerIfRunning();
+            stopScanner();
 
-            if (cameraId) {
-                await scanner.start(
-                    cameraId,
-                    scanConfig(),
-                    onScanSuccess,
-                    () => { setStatus('Scanning...'); }
-                );
-            } else if (isSafariBrowser) {
-                await warmUpSafariCamera();
-                await startWithAvailableCamera();
-            } else {
-                try {
-                    await scanner.start(
-                        { facingMode: { exact: 'environment' } },
-                        scanConfig(),
-                        onScanSuccess,
-                        () => { setStatus('Scanning...'); }
-                    );
-                } catch (rearError) {
-                    try {
-                        await scanner.start(
-                            { facingMode: 'environment' },
-                            scanConfig(),
-                            onScanSuccess,
-                            () => { setStatus('Scanning...'); }
-                        );
-                    } catch (environmentError) {
-                        await startWithAvailableCamera();
-                    }
-                }
+            await setupNativeDetector();
+            activeStream = await openCamera(cameraId);
+            videoEl.srcObject = activeStream;
+            videoEl.setAttribute('playsinline', 'true');
+            videoEl.setAttribute('webkit-playsinline', 'true');
+            videoEl.muted = true;
+            await videoEl.play();
+
+            await refreshCameraSelect();
+            const currentTrack = activeStream.getVideoTracks()[0];
+            const currentSettings = currentTrack?.getSettings ? currentTrack.getSettings() : {};
+            if (cameraSelect && currentSettings.deviceId) {
+                cameraSelect.value = currentSettings.deviceId;
             }
 
+            if (!nativeDetector && !window.jsQR) {
+                throw new Error('QR decoder could not load. Confirm public/vendor/jsQR.js was uploaded.');
+            }
+
+            scanLoop();
             startBtn.classList.add('hidden');
             setStatus('Point the camera at the receipt QR code.', 'success');
-            refreshCameraSelect();
         } catch (error) {
+            stopScanner();
             setStatus('Camera failed to start. Please allow camera permission and try again. ' + error, 'error');
-            startBtn.classList.remove('hidden');
         } finally {
             isStartingCamera = false;
             startBtn.disabled = false;
@@ -288,5 +299,7 @@
     }
 
     refreshCameraSelect();
+    window.addEventListener('pagehide', stopScanner);
+    window.addEventListener('beforeunload', stopScanner);
 </script>
 @endsection

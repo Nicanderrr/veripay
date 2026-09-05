@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ asset('rage-assets/css/font-awesome.min.css') }}">
     <link rel="stylesheet" href="{{ asset('rage-assets/css/animate.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         @import url('https://fonts.googleapis.com/css?family=Montserrat:400,700|Raleway:400,600,700|Open+Sans:300,400,600,700');
 

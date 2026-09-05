@@ -36,8 +36,9 @@
 @endsection
 
 @section('scripts')
-<script src="{{ asset('vendor/jsQR.js') }}"></script>
 <script>
+    const localQrDecoderUrl = @json(asset('vendor/jsQR.js'));
+    const cdnQrDecoderUrl = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
     const statusEl = document.getElementById('security-scan-status');
     const startBtn = document.getElementById('start-security-scan');
     const readerEl = document.getElementById('security-reader');
@@ -51,6 +52,7 @@
     let lastScan = 0;
     let isStartingCamera = false;
     let isScanningFrame = false;
+    let qrDecoderPromise = null;
     const isSafariBrowser = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     function setStatus(message, tone = 'neutral') {
@@ -141,6 +143,39 @@
         } catch (error) {
             nativeDetector = null;
         }
+    }
+
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const existing = document.querySelector(`script[src="${src}"]`);
+            if (existing) {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error(`Unable to load ${src}`));
+            document.head.appendChild(script);
+        });
+    }
+
+    async function ensureQrDecoder() {
+        if (window.jsQR) return;
+        if (!qrDecoderPromise) {
+            qrDecoderPromise = loadScript(localQrDecoderUrl)
+                .catch(() => loadScript(cdnQrDecoderUrl))
+                .then(() => {
+                    if (!window.jsQR) {
+                        throw new Error('QR decoder did not initialize.');
+                    }
+                });
+        }
+
+        return qrDecoderPromise;
     }
 
     function drawVideoFrame() {
@@ -249,6 +284,10 @@
             stopScanner();
 
             await setupNativeDetector();
+            if (!nativeDetector) {
+                await ensureQrDecoder();
+            }
+
             activeStream = await openCamera(cameraId);
             videoEl.srcObject = activeStream;
             videoEl.setAttribute('playsinline', 'true');
@@ -261,10 +300,6 @@
             const currentSettings = currentTrack?.getSettings ? currentTrack.getSettings() : {};
             if (cameraSelect && currentSettings.deviceId) {
                 cameraSelect.value = currentSettings.deviceId;
-            }
-
-            if (!nativeDetector && !window.jsQR) {
-                throw new Error('QR decoder could not load. Confirm public/vendor/jsQR.js was uploaded.');
             }
 
             scanLoop();

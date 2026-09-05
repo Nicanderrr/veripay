@@ -2,44 +2,293 @@
 
 @section('title', 'Scan Products')
 
+@push('head')
+<style>
+    .scan-page {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 22px;
+        align-items: start;
+    }
+
+    .scan-panel {
+        overflow: hidden;
+    }
+
+    .scan-panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 22px 0;
+    }
+
+    .scan-panel-copy {
+        max-width: 620px;
+    }
+
+    .scan-panel-copy p {
+        margin: 10px 0 0;
+        color: #64748b;
+        font-size: 14px;
+        line-height: 1.7;
+        font-weight: 700;
+    }
+
+    .scan-indicator-pill {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: #ecfdf5;
+        color: #047857;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 900;
+        transition: opacity 180ms ease;
+    }
+
+    .scan-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 18px 22px 0;
+    }
+
+    .scan-camera-select {
+        max-width: 280px;
+        min-width: 220px;
+    }
+
+    .scanner-shell {
+        padding: 18px 22px 0;
+    }
+
+    .scanner-frame {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 8px;
+        background: radial-gradient(circle at top left, rgba(255, 104, 99, 0.24), transparent 30%), linear-gradient(135deg, #0f172a, #020617);
+        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    }
+
+    .scanner-viewport {
+        position: relative;
+        aspect-ratio: 16 / 10;
+        min-height: 330px;
+        overflow: hidden;
+        background: #020617;
+    }
+
+    .scanner-viewport video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #020617;
+    }
+
+    .scanner-guide {
+        position: absolute;
+        inset: 13%;
+        border: 2px solid rgba(255, 255, 255, 0.88);
+        border-radius: 14px;
+        pointer-events: none;
+        box-shadow: 0 0 0 999px rgba(2, 6, 23, 0.38);
+    }
+
+    .scanner-guide::before,
+    .scanner-guide::after {
+        content: "";
+        position: absolute;
+        width: 34px;
+        height: 34px;
+        border-color: var(--shop-primary);
+        border-style: solid;
+    }
+
+    .scanner-guide::before {
+        top: -2px;
+        left: -2px;
+        border-width: 4px 0 0 4px;
+        border-top-left-radius: 14px;
+    }
+
+    .scanner-guide::after {
+        right: -2px;
+        bottom: -2px;
+        border-width: 0 4px 4px 0;
+        border-bottom-right-radius: 14px;
+    }
+
+    .scanner-empty-state {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: rgba(255, 255, 255, 0.74);
+        text-align: center;
+        font-size: 14px;
+        font-weight: 800;
+        pointer-events: none;
+    }
+
+    .scanner-viewport.has-feed .scanner-empty-state {
+        display: none;
+    }
+
+    .scan-status {
+        margin: 16px 22px 22px;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        color: #475569;
+        padding: 13px 15px;
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.55;
+    }
+
+    .scan-side {
+        display: grid;
+        gap: 16px;
+    }
+
+    .scan-side-card {
+        padding: 20px;
+    }
+
+    .scan-side-card h2 {
+        margin: 0;
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: 900;
+    }
+
+    .scan-result-box {
+        margin-top: 12px;
+        min-height: 74px;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        color: #64748b;
+        padding: 13px;
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.55;
+    }
+
+    .scan-tips {
+        display: grid;
+        gap: 11px;
+        margin-top: 14px;
+    }
+
+    .scan-tip {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.55;
+    }
+
+    .scan-tip span {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: var(--shop-soft);
+        color: var(--shop-primary);
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    @media (max-width: 900px) {
+        .scan-page {
+            grid-template-columns: 1fr;
+        }
+
+        .scan-panel-header,
+        .scan-controls,
+        .scanner-shell {
+            padding-inline: 16px;
+        }
+
+        .scan-status {
+            margin-inline: 16px;
+        }
+    }
+
+    @media (max-width: 560px) {
+        .scan-panel-header {
+            display: grid;
+        }
+
+        .scan-indicator-pill {
+            width: fit-content;
+        }
+
+        .scanner-viewport {
+            aspect-ratio: 4 / 5;
+            min-height: 360px;
+        }
+
+        .scan-camera-select {
+            max-width: none;
+            width: 100%;
+        }
+    }
+</style>
+@endpush
+
 @section('content')
-<div class="grid gap-6 lg:grid-cols-[1fr_340px]">
-    <section class="shop-card relative overflow-hidden p-5">
-        <div class="flex items-start justify-between gap-4">
-            <div>
+<div class="scan-page">
+    <section class="shop-card scan-panel">
+        <div class="scan-panel-header">
+            <div class="scan-panel-copy">
                 <div class="section-kicker">Scan & Go</div>
                 <h1 class="section-title mt-1">Scan products</h1>
-                <p class="mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-500">Point your camera at a product QR code to add products directly to your cart.</p>
+                <p>Point your camera at a product QR code to add products directly to your cart.</p>
             </div>
-            <div id="scan-indicator" class="rounded-full bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700 opacity-0 transition-opacity">Scanned</div>
+            <div id="scan-indicator" class="scan-indicator-pill opacity-0">Scanned</div>
         </div>
 
-        <div class="mt-5 flex flex-wrap items-center gap-3">
+        <div class="scan-controls">
             <button id="start-scan" class="shop-btn shop-btn-primary" type="button">Start Camera</button>
-            <select id="camera-select" class="shop-select hidden max-w-xs" aria-label="Switch camera"></select>
+            <select id="camera-select" class="shop-select scan-camera-select hidden" aria-label="Switch camera"></select>
         </div>
-        <div class="mt-5 overflow-hidden rounded-md border border-slate-200 bg-slate-950 p-2">
-            <div id="reader" class="relative min-h-[320px] overflow-hidden rounded-md bg-slate-900">
-                <video id="scan-video" class="h-full min-h-[320px] w-full object-cover" muted playsinline webkit-playsinline></video>
-                <canvas id="scan-canvas" class="hidden"></canvas>
-                <div class="pointer-events-none absolute inset-[12%] rounded-xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(2,6,23,0.36)]"></div>
+        <div class="scanner-shell">
+            <div class="scanner-frame">
+                <div id="reader" class="scanner-viewport">
+                    <video id="scan-video" muted playsinline webkit-playsinline></video>
+                    <canvas id="scan-canvas" class="hidden"></canvas>
+                    <div class="scanner-empty-state">Camera preview will appear here</div>
+                    <div class="scanner-guide" aria-hidden="true"></div>
+                </div>
             </div>
         </div>
-        <div id="scan-status" class="mt-4 rounded-md bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600"></div>
+        <div id="scan-status" class="scan-status"></div>
     </section>
 
-    <aside class="space-y-4">
-        <div class="shop-card p-5">
-            <h2 class="text-xl font-black text-slate-950">Recent scan</h2>
-            <div id="scan-result" class="mt-3 rounded-md bg-slate-50 p-4 text-sm font-bold text-slate-500">No scans yet.</div>
+    <aside class="scan-side">
+        <div class="shop-card scan-side-card">
+            <h2>Recent scan</h2>
+            <div id="scan-result" class="scan-result-box">No scans yet.</div>
         </div>
 
-        <div class="shop-card p-5">
-            <h2 class="text-xl font-black text-slate-950">Tips</h2>
-            <div class="mt-4 space-y-3 text-sm font-semibold text-slate-600">
-                <div class="flex gap-3"><span class="text-sky-700">1</span> Keep the QR code inside the scan box.</div>
-                <div class="flex gap-3"><span class="text-sky-700">2</span> Avoid glare and hold steady.</div>
-                <div class="flex gap-3"><span class="text-sky-700">3</span> Review your cart before checkout.</div>
+        <div class="shop-card scan-side-card">
+            <h2>Tips</h2>
+            <div class="scan-tips">
+                <div class="scan-tip"><span>1</span> Keep the QR code inside the scan box.</div>
+                <div class="scan-tip"><span>2</span> Avoid glare and hold steady.</div>
+                <div class="scan-tip"><span>3</span> Review your cart before checkout.</div>
             </div>
         </div>
     </aside>

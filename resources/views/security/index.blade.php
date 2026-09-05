@@ -13,8 +13,8 @@
             <button id="start-security-scan" class="btn-primary" type="button">Start Scanner</button>
             <select id="security-camera-select" class="field hidden max-w-xs" aria-label="Switch camera"></select>
         </div>
-        <div class="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950 p-2">
-            <div id="security-reader" class="min-h-[320px] rounded-lg bg-slate-900"></div>
+        <div class="security-scanner-frame mt-5">
+            <div id="security-reader"></div>
         </div>
         <div id="security-scan-status" class="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600"></div>
     </section>
@@ -42,6 +42,20 @@
     let scannerLibraryPromise = null;
     let lastScan = 0;
     let isStartingCamera = false;
+
+    function setStatus(message, tone = 'neutral') {
+        statusEl.textContent = message;
+        statusEl.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-bold';
+        if (tone === 'error') {
+            statusEl.classList.add('bg-rose-50', 'text-rose-800');
+            return;
+        }
+        if (tone === 'success') {
+            statusEl.classList.add('bg-emerald-50', 'text-emerald-800');
+            return;
+        }
+        statusEl.classList.add('bg-slate-50', 'text-slate-600');
+    }
 
     function loadScannerLibrary() {
         if (window.Html5Qrcode) return Promise.resolve();
@@ -106,7 +120,7 @@
     }
 
     function scanConfig() {
-        const boxSize = Math.max(220, Math.min(readerEl.clientWidth || 300, 340));
+        const boxSize = Math.max(210, Math.min(readerEl.clientWidth || 300, 320));
 
         const config = {
             fps: 12,
@@ -160,9 +174,17 @@
         if (isStartingCamera) return;
         isStartingCamera = true;
         startBtn.disabled = true;
-        statusEl.textContent = 'Starting camera...';
+        setStatus('Starting camera...');
 
         try {
+            if (!window.isSecureContext) {
+                throw new Error('Camera access requires HTTPS. Open the deployed security page with https://.');
+            }
+
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('This browser does not support camera scanning.');
+            }
+
             await ensureScanner();
             await stopScannerIfRunning();
 
@@ -171,7 +193,7 @@
                     cameraId,
                     scanConfig(),
                     onScanSuccess,
-                    () => { statusEl.textContent = 'Scanning...'; }
+                    () => { setStatus('Scanning...'); }
                 );
             } else {
                 try {
@@ -179,7 +201,7 @@
                         { facingMode: { exact: 'environment' } },
                         scanConfig(),
                         onScanSuccess,
-                        () => { statusEl.textContent = 'Scanning...'; }
+                        () => { setStatus('Scanning...'); }
                     );
                 } catch (rearError) {
                     try {
@@ -187,7 +209,7 @@
                             { facingMode: 'environment' },
                             scanConfig(),
                             onScanSuccess,
-                            () => { statusEl.textContent = 'Scanning...'; }
+                            () => { setStatus('Scanning...'); }
                         );
                     } catch (environmentError) {
                         await startWithAvailableCamera();
@@ -196,10 +218,10 @@
             }
 
             startBtn.classList.add('hidden');
-            statusEl.textContent = 'Point the camera at the receipt QR code.';
+            setStatus('Point the camera at the receipt QR code.', 'success');
             refreshCameraSelect();
         } catch (error) {
-            statusEl.textContent = 'Camera failed to start. Please allow camera permission and try again. ' + error;
+            setStatus('Camera failed to start. Please allow camera permission and try again. ' + error, 'error');
             startBtn.classList.remove('hidden');
         } finally {
             isStartingCamera = false;
@@ -208,13 +230,20 @@
     }
 
     startBtn.addEventListener('click', () => startScanner());
+
+    if (!window.isSecureContext) {
+        setStatus('Camera requires HTTPS. Open this page through your secure Hostinger domain.', 'error');
+    } else {
+        setStatus('Tap Start Scanner and allow camera permission.');
+    }
+
     if (cameraSelect) {
         cameraSelect.addEventListener('change', async () => {
-            statusEl.textContent = 'Switching camera...';
+            setStatus('Switching camera...');
             try {
                 await startScanner(cameraSelect.value);
             } catch (error) {
-                statusEl.textContent = 'Unable to switch camera. ' + error;
+                setStatus('Unable to switch camera. ' + error, 'error');
             }
         });
     }

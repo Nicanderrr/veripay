@@ -1,0 +1,22 @@
+export const MAP_SCALE = 0.8;
+export const MAP_WIDTH = 35;
+export const MAP_LENGTH = 25;
+
+export const FLOOR_DIMENSIONS = [MAP_WIDTH * MAP_SCALE, MAP_LENGTH * MAP_SCALE];
+
+export const WALL_WIDTH = 50 * MAP_SCALE;
+export const WALL_HEIGHT = 5 * MAP_SCALE;
+export const WALL_DEPTH = 0.5 * MAP_SCALE;
+export const WALL_DIMENSIONS = [WALL_WIDTH, WALL_HEIGHT, WALL_DEPTH];
+export const WALL_POSITION_Y = WALL_HEIGHT / 2;
+export const WALL_OFFSET_X = FLOOR_DIMENSIONS[0] / 2;
+export const WALL_OFFSET_Z = FLOOR_DIMENSIONS[1] / 2;
+
+export const ROOF_SIZE = FLOOR_DIMENSIONS;
+export const ROOF_HEIGHT = WALL_HEIGHT;
+
+export const SHELF_SIZE = [3.6 * MAP_SCALE * 1.2, 2 * MAP_SCALE * 1.2, 0.6 * MAP_SCALE * 1.2];
+export const SHELF_THICKNESS = 0.1 * MAP_SCALE * 1.2;
+
+export const PRODUCT_SIZE = 0.5 * MAP_SCALE;
+export const PRODUCT_DIMENSIONS = [PRODUCT_SIZE, PRODUCT_SIZE, PRODUCT_SIZE];

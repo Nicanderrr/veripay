@@ -1,0 +1,29 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    DirectoryIndex index.php
+    RewriteEngine On
+
+    # Preserve headers used by Laravel Sanctum/API requests.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Serve existing files/folders from Laravel's public directory.
+    RewriteCond %{DOCUMENT_ROOT}/public/$1 -f [OR]
+    RewriteCond %{DOCUMENT_ROOT}/public/$1 -d
+    RewriteRule ^(.*)$ public/$1 [L]
+
+    # Route everything else to Laravel.
+    RewriteRule ^(.*)$ public/index.php [L]
+</IfModule>
+
+# Basic protection for sensitive root files.
+<FilesMatch "^(\.env|artisan|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|vite\.config\.js|tailwind\.config\.js|postcss\.config\.js)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

@@ -43,7 +43,7 @@
 @endsection
 
 @section('scripts')
-<script src="/vendor/html5-qrcode.min.js"></script>
+<script src="{{ asset('vendor/html5-qrcode.min.js') }}"></script>
 <script>
     const statusEl = document.getElementById('scan-status');
     const resultEl = document.getElementById('scan-result');
@@ -97,6 +97,21 @@
     let html5QrCode = null;
     let scannerLibraryPromise = null;
     let isStartingCamera = false;
+    const isSafariBrowser = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
+        || /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    const inlineVideoObserver = new MutationObserver(() => {
+        readerEl.querySelectorAll('video').forEach(video => {
+            video.setAttribute('playsinline', 'true');
+            video.setAttribute('webkit-playsinline', 'true');
+            video.setAttribute('muted', 'true');
+            video.setAttribute('autoplay', 'true');
+            video.playsInline = true;
+            video.muted = true;
+        });
+    });
+
+    inlineVideoObserver.observe(readerEl, { childList: true, subtree: true });
 
     function loadScannerLibrary() {
         if (window.Html5Qrcode) return Promise.resolve();
@@ -161,6 +176,27 @@
         }).catch(() => {});
     }
 
+    async function warmUpSafariCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) return;
+
+        let stream = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: { facingMode: 'environment' },
+            });
+        } catch (error) {
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: true,
+            });
+        } finally {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+    }
+
     async function stopScannerIfRunning() {
         try {
             if (html5QrCode?.isScanning) {
@@ -198,6 +234,9 @@
 
             if (cameraId) {
                 await html5QrCode.start(cameraId, scanConfig(), onScanSuccess, onScanFailure);
+            } else if (isSafariBrowser) {
+                await warmUpSafariCamera();
+                await startWithAvailableCamera();
             } else {
                 try {
                     await html5QrCode.start({ facingMode: { exact: 'environment' } }, scanConfig(), onScanSuccess, onScanFailure);
@@ -224,6 +263,8 @@
 
     if (!window.isSecureContext) {
         statusEl.textContent = 'Camera requires HTTPS or localhost. Open this page over HTTPS or use a secure tunnel.';
+    } else if (isSafariBrowser) {
+        statusEl.textContent = 'On Safari, tap Start Camera and choose Allow when camera permission appears.';
     }
 
     startBtn.addEventListener('click', () => startCamera());

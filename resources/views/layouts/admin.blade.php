@@ -609,6 +609,8 @@
             min-height: 320px;
             object-fit: cover;
             border-radius: 6px;
+            background: #020617;
+            transform: translateZ(0);
         }
 
         #security-reader__scan_region,

@@ -32,7 +32,7 @@
 @endsection
 
 @section('scripts')
-<script src="/vendor/html5-qrcode.min.js"></script>
+<script src="{{ asset('vendor/html5-qrcode.min.js') }}"></script>
 <script>
     const statusEl = document.getElementById('security-scan-status');
     const startBtn = document.getElementById('start-security-scan');
@@ -42,6 +42,21 @@
     let scannerLibraryPromise = null;
     let lastScan = 0;
     let isStartingCamera = false;
+    const isSafariBrowser = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
+        || /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    const inlineVideoObserver = new MutationObserver(() => {
+        readerEl.querySelectorAll('video').forEach(video => {
+            video.setAttribute('playsinline', 'true');
+            video.setAttribute('webkit-playsinline', 'true');
+            video.setAttribute('muted', 'true');
+            video.setAttribute('autoplay', 'true');
+            video.playsInline = true;
+            video.muted = true;
+        });
+    });
+
+    inlineVideoObserver.observe(readerEl, { childList: true, subtree: true });
 
     function setStatus(message, tone = 'neutral') {
         statusEl.textContent = message;
@@ -140,6 +155,27 @@
         }).catch(() => {});
     }
 
+    async function warmUpSafariCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) return;
+
+        let stream = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: { facingMode: 'environment' },
+            });
+        } catch (error) {
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: true,
+            });
+        } finally {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+    }
+
     async function stopScannerIfRunning() {
         try {
             if (scanner?.isScanning) {
@@ -195,6 +231,9 @@
                     onScanSuccess,
                     () => { setStatus('Scanning...'); }
                 );
+            } else if (isSafariBrowser) {
+                await warmUpSafariCamera();
+                await startWithAvailableCamera();
             } else {
                 try {
                     await scanner.start(
@@ -234,7 +273,7 @@
     if (!window.isSecureContext) {
         setStatus('Camera requires HTTPS. Open this page through your secure Hostinger domain.', 'error');
     } else {
-        setStatus('Tap Start Scanner and allow camera permission.');
+        setStatus(isSafariBrowser ? 'On Safari, tap Start Scanner and choose Allow when camera permission appears.' : 'Tap Start Scanner and allow camera permission.');
     }
 
     if (cameraSelect) {
